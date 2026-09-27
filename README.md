@@ -1,4 +1,4 @@
-# HealthCloud — Consent-Aware Care Coordination & Claims Platform
+# 🚀 HealthCloud — Consent-Aware Care Coordination & Claims Platform
 
 [![CI](https://github.com/Nikhil-Oggu/healthcloud/actions/workflows/ci.yml/badge.svg)](https://github.com/Nikhil-Oggu/healthcloud/actions/workflows/ci.yml)
 ![Java 25](https://img.shields.io/badge/Java-25-ED8B00?logo=openjdk&logoColor=white)
