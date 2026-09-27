@@ -41,6 +41,8 @@
 🔗 **Live demo:** **https://nikhil.healthcloud-demo.com** — sign in as any role with the published
 synthetic demo credentials on the login page (throwaway Cognito accounts reaching no real data).
 
+![HealthCloud demo — product tour: sign-in, dashboard, patients, consent field-masking, claim adjudication, audit trail, coverage plans](docs/media/demo.gif)
+
 **HealthCloud** is a multi-tenant, production-grade platform for healthcare **care coordination**
 and **claims adjudication**. Its engineering value is not in any single feature — it is in answering,
 on every request, the question that authentication alone cannot: *should **this** person see **this**
