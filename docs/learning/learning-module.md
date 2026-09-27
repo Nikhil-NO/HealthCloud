@@ -6466,3 +6466,115 @@ DNS), because those are AWS-assigned on creation. Anything that references them 
 URLs pinned to the CloudFront domain, the OIDC `redirect_uri` env) is derived in the config, so it
 reconciles automatically — but any *external* record (a hardcoded URL in docs, a DNS entry) would need
 updating. Then re-push the arm64 images to the freshly-created ECR repos before the ECS tasks can pull.
+
+---
+
+## Building a README demo GIF with Pillow + polishing the GitHub repo front page — 2026-09-27
+
+### What we built
+No application code — this was **portfolio presentation**: making the public GitHub repo land well for a
+recruiter who visits the URL. Three things: (1) an animated **demo GIF** at the top of the README, (2) a
+clickable **live-demo link** (in the README and the repo's About panel), and (3) the repo's **About**
+metadata — description, website link, and 20 topics. Plus realigning the AWS budget alarm after the
+teardown.
+
+### How it works
+**The demo GIF (no ImageMagick/ffmpeg needed).** The machine had none of `magick`/`convert`/`ffmpeg`/
+`gifsicle`, so we installed **Pillow** (`pip3 install --user Pillow`) and assembled the GIF in Python from
+the existing `docs/evidence/screenshots/ui-*.png` captures. The key steps:
+- The screenshots were 2160px-wide retina captures of **wildly different heights** (a claim page is 3557px
+  tall, the dashboard 1376px). A GIF needs **uniform frames**, so each image is cropped to a common 16:10
+  ratio from the top (the "above-the-fold" hero of each screen) then resized to 1000×625.
+- A caption strip (a rounded dark pill + white text) is drawn per frame with `ImageDraw`, naming the screen
+  ("Claim adjudication — explainable engine"), using a TrueType font found on macOS
+  (`/System/Library/Fonts/Supplemental/Arial.ttf`) with a fallback to `ImageFont.load_default()`.
+- Frames are quantized to a shared adaptive palette and saved as one looping GIF with per-frame durations.
+
+```python
+im = Image.open(path).convert("RGB")
+w, h = im.size
+crop_h = min(int(round(w * 625/1000)), h)          # uniform 16:10 from the top
+im = im.crop((0, 0, w, crop_h)).resize((1000, 625), Image.LANCZOS)
+# ...draw caption pill...
+pal = [f.quantize(colors=200, method=Image.MEDIANCUT) for f in frames]
+pal[0].save("demo.gif", save_all=True, append_images=pal[1:],
+            duration=durations, loop=0, optimize=True, disposal=2)
+```
+Result: a 547 KB, 7-frame loop — well under GitHub's ~10 MB inline-render cap. It lives at
+`docs/media/demo.gif` and is embedded with a plain `![alt](docs/media/demo.gif)` under the live-demo line.
+
+**Repo About panel (GitHub settings, not repo files).** Set via the `gh` CLI, so nothing to commit:
+```bash
+gh repo edit OWNER/REPO --homepage "https://nikhil.healthcloud-demo.com" --description "…"
+gh repo edit OWNER/REPO --add-topic java --add-topic spring-boot …   # up to 20 topics
+```
+The description has a **~350-character limit** (counted in Unicode code points, not bytes — the `·`
+separators are 2 bytes each), so we measured with `LC_ALL=en_US.UTF-8 … wc -m` before applying.
+
+**Budget realign.** `aws budgets update-budget` raised the alarm $5 → $20/mo to match the always-on demo's
+run-rate after the ECS teardown.
+
+### Key points to remember
+- **A GIF from screenshots is a legitimate "product tour."** When you can't do a smooth screen recording
+  (here: the live demo is a public Cognito site and we don't type passwords into non-local sites; the local
+  app was up but frame-stitching is slideshow-quality anyway), a captioned slideshow of the real UI screens
+  is honest and effective. We reused already-committed synthetic-data captures, so no new login was needed.
+- **Uniform frame size is the whole trick.** Mismatched aspect ratios make a GIF letterbox or jump; crop
+  every source to one ratio first.
+- **`aws budgets update-budget` replaces the entire budget object.** We passed `CostTypes` without pinning
+  `IncludeCredit`, and it defaulted to `true` — flipping the budget from **gross** tracking (what usage
+  costs) to **net-after-credits** (~$0 while credits cover it), which would never alarm. Fixed by re-sending
+  with `IncludeCredit=false`. Always send the full `CostTypes` you want.
+- **GitHub About = repo settings, not files.** Description, website, and topics are changed with
+  `gh repo edit`; they don't appear in `git status` and need no commit. Only the README/GIF are files.
+- **GitHub description limit is 350 chars, counted as Unicode.** Byte-based `wc -c` over-counts when the
+  text has multibyte glyphs; use `wc -m` under a UTF-8 locale.
+- **GitHub renders a GIF ≤ ~10 MB inline** and animates it via its camo image proxy — verified by loading
+  the rendered README in the browser and catching the animation mid-loop.
+
+### Failures and how we fixed them
+- **Budget silently flipped to net-after-credits.** Symptom: right after `update-budget` the budget's
+  actual read `$0.0` and `IncludeCredit=true`. Root cause: `update-budget` replaces the object, and the
+  `CostTypes` we sent defaulted `IncludeCredit` to true. Fix: re-ran with an explicit
+  `CostTypes {... IncludeCredit=false ...}`; actual returned to the gross `$7.35` — the guardrail we wanted.
+- **`wc -m` first reported the description as byte-length** (371) because the shell locale wasn't UTF-8;
+  under `LC_ALL=en_US.UTF-8` it correctly counted 351 code points, so we trimmed one word to fit ≤ 350.
+- No other breakage — the GIF built on the first run and rendered correctly on GitHub.
+
+### Interview Q&A
+
+#### 1. Beginner
+**Q: Why put a GIF and a live link at the top of a README?**
+A: A recruiter spends seconds on a repo. An animated tour + a one-click live demo prove the project is
+real and working before they read a word — far more convincing than a wall of text.
+
+**Q: Where do GitHub "About" description and topics live — are they in the repo?**
+A: No. They're repository *settings*, changed with `gh repo edit` (or the web UI), and don't appear in the
+git history. Only the README and the GIF file are committed.
+
+#### 2. Intermediate
+**Q: Why build the GIF from existing screenshots instead of recording the live app?**
+A: Two reasons. Security: the live demo is a public Cognito site and we don't enter passwords into
+non-local sites, so we can't drive it end-to-end. Practicality: the existing evidence screenshots are
+higher-quality full-screen captures than frame-by-frame browser grabs, and they're already vetted
+synthetic-data. A captioned slideshow of them is an honest product tour.
+
+**Q: What makes a set of images assemble cleanly into a GIF?**
+A: Uniform frame dimensions. Source screenshots had very different heights, so each is cropped to one
+aspect ratio (16:10, top-anchored) and resized to the same pixel size before being appended; otherwise the
+GIF would letterbox or resize jarringly between frames.
+
+#### 3. Advanced
+**Q: The AWS budget started tracking $0 after an update. What happened and why does it matter?**
+A: `aws budgets update-budget` does a full-object replace. The `CostTypes.IncludeCredit` flag defaulted to
+`true`, which subtracts AWS credits from the tracked spend — so a credit-covered account reads ~$0 and the
+alarm never fires. For a credit-burn guardrail you want **gross** tracking (`IncludeCredit=false`) so the
+budget reflects what usage actually costs, alarming while you still have credits rather than only once real
+charges begin. Fix: always send the complete `CostTypes` you intend.
+
+**Q: How would you keep a demo GIF small enough to render on GitHub?**
+A: GitHub renders GIFs up to ~10 MB inline. Levers: fewer frames (we used 7, not all 11 screens),
+downscale (1000px wide, not 2160), a reduced adaptive palette (`quantize(colors=200)`), `optimize=True`,
+and `disposal=2` so frames don't accumulate. That got a 7-screen tour to 547 KB. For a real screen
+recording you'd also cap frame rate and length, or use a `<video>`/`.mp4` (which GitHub also supports and
+compresses better than GIF).
