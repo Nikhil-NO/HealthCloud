@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars and adjust if needed. All of these have working defaults, so an empty
+# tfvars is fine for the standard deploy.
+
+# aws_region    = "us-east-1"
+# domain_name   = "healthcloud-demo.com"
+# acme_email    = "you@example.com"        # your address, for Let's Encrypt cert-expiry notices
+# instance_type = "t4g.micro"              # ARM64, free-tier eligible
+# github_owner  = "nikhil-oggu"            # GHCR owner the CI images are published under
+# image_tag     = "latest"                 # or a pinned sha-<short> tag

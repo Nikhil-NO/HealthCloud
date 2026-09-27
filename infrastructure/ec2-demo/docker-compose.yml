@@ -1,0 +1,56 @@
+# The always-on demo stack that runs ON the EC2 box (written to /opt/healthcloud/docker-compose.yml
+# by user-data). It is STATIC — all values come from the sibling .env (fetched from SSM at boot), so
+# there is no Terraform interpolation here and the file is human-readable in the repo.
+#
+# Topology:  internet → Caddy (TLS :443) → frontend nginx (:8080) → backend (:8080) → postgres (:5432)
+# Only Caddy publishes ports; postgres/backend/frontend are reachable only on the internal network.
+
+services:
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    env_file: [.env] # POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthcloud -d healthcloud"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    image: ${BACKEND_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: [.env] # DB creds, Cognito, profiles, forward-headers, pinned redirect_uri, etc.
+    environment:
+      # The datasource host is the compose service name; everything else is in .env.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcloud
+
+  frontend:
+    image: ${FRONTEND_IMAGE}
+    restart: unless-stopped
+    depends_on: [backend]
+    environment:
+      # nginx reverse-proxies /api + /actuator + /oauth2 + /login/oauth2 to the backend, same-origin.
+      BACKEND_UPSTREAM: http://backend:8080
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [frontend]
+    env_file: [.env] # DOMAIN + ACME_EMAIL for the Caddyfile
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # persists the issued TLS cert across restarts
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

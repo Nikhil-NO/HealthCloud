@@ -1,0 +1,54 @@
+#!/bin/bash
+# Boot script for the always-on demo box (Amazon Linux 2023, arm64). Runs once at first boot.
+# cloud-init captures its output in /var/log/cloud-init-output.log (useful when debugging via SSM).
+#
+# Terraform fills in the placeholders below at apply time. The compose + Caddyfile are injected as
+# whole files (no secrets); the .env (secrets + config) is pulled from SSM at boot, so it never
+# appears in this user-data (which is readable from instance metadata).
+set -euxo pipefail
+
+# --- Docker Engine ---------------------------------------------------------------------------------
+dnf update -y
+dnf install -y docker unzip
+systemctl enable --now docker
+
+# --- Docker Compose v2 plugin (arm64) --------------------------------------------------------------
+mkdir -p /usr/libexec/docker/cli-plugins
+curl -fsSL https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-aarch64 \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+chmod +x /usr/libexec/docker/cli-plugins/docker-compose
+
+# --- AWS CLI v2 (arm64), used to read the .env from SSM --------------------------------------------
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+
+# --- App directory + config ------------------------------------------------------------------------
+mkdir -p /opt/healthcloud
+cd /opt/healthcloud
+
+# docker-compose.yml and Caddyfile are injected verbatim by Terraform (quoted heredocs, so the shell
+# does not expand anything inside them — compose/Caddy do their own $VAR substitution at runtime).
+cat > /opt/healthcloud/docker-compose.yml <<'COMPOSE_EOF'
+${compose_content}
+COMPOSE_EOF
+
+cat > /opt/healthcloud/Caddyfile <<'CADDY_EOF'
+${caddy_content}
+CADDY_EOF
+
+# Fetch the .env (config + secrets) from SSM Parameter Store, decrypting the SecureString via the
+# instance role. Kept out of user-data on purpose. Lock it down to root.
+/usr/local/bin/aws ssm get-parameter \
+  --region ${region} \
+  --name '${env_param_name}' \
+  --with-decryption \
+  --query 'Parameter.Value' \
+  --output text > /opt/healthcloud/.env
+chmod 600 /opt/healthcloud/.env
+
+# --- Launch ----------------------------------------------------------------------------------------
+docker compose -f /opt/healthcloud/docker-compose.yml pull
+docker compose -f /opt/healthcloud/docker-compose.yml up -d
+
+echo "healthcloud demo bootstrap complete"

@@ -1,0 +1,21 @@
+# Caddy config for the always-on demo (written to /opt/healthcloud/Caddyfile by user-data).
+# Caddy substitutes {$DOMAIN} / {$ACME_EMAIL} from its environment (supplied via .env in compose).
+# It automatically obtains + renews a free Let's Encrypt TLS cert once the domain's A record points at
+# this box's Elastic IP — no cert management needed.
+
+{
+	# Contact address for the ACME account (cert-expiry notices).
+	email {$ACME_EMAIL}
+}
+
+# The app on the apex domain, HTTPS auto-provisioned. Caddy terminates TLS and proxies to the
+# frontend nginx container, which serves the SPA and reverse-proxies the API/OIDC paths to the backend.
+{$DOMAIN} {
+	encode gzip zstd
+	reverse_proxy frontend:8080
+}
+
+# Redirect www → apex so there is a single canonical origin (matches the one Cognito callback URL).
+www.{$DOMAIN} {
+	redir https://{$DOMAIN}{uri} permanent
+}
