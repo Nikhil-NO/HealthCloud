@@ -457,6 +457,21 @@
 
 ## Log (newest first)
 
+### 2026-09-27 — Fixed the demo's unbranded Cognito sign-in page + codified branding in Terraform ✅
+- **Bug:** the always-on demo's sign-in page had lost its HealthCloud branding — it showed Cognito's plain default
+  page (grey banner, blue button, no logo/wordmark) instead of the dark-navy/teal HealthCloud page.
+- **Root cause:** the EC2 demo has its **own** Cognito pool (`us-east-1_nnLesE6Aq`), and hosted-UI branding is
+  stored **per client in AWS, not in Terraform** (`set-ui-customization`). The old ECS pool's client was branded;
+  the fresh EC2-demo client never was, so it fell back to the default.
+- **Fix (2 steps):** (1) copied the CSS + logo from the old branded client and applied them to the EC2-demo client
+  with `aws cognito-idp set-ui-customization` — page instantly re-branded (verified in-browser). (2) **codified it**
+  so it can't drift again: added **`aws_cognito_user_pool_ui_customization.app`** to
+  `infrastructure/ec2-demo/cognito.tf`, with the CSS + logo committed at `infrastructure/ec2-demo/cognito-ui/`
+  (`hosted-ui.css` + `logo.png`), read via `file()`/`filebase64()`. `terraform apply -target` = **1 add / 0 change /
+  0 destroy** ($0, idempotent); a follow-up full `terraform plan` = **No changes** (state in sync). Now a rebuild of
+  the pool restores branding automatically — unlike the ECS stack, where it remains AWS-only drift.
+- Docs: CLAUDE.md (always-on demo note) + the ec2-demo README updated.
+
 ### 2026-09-27 — Always-on demo renamed to a subdomain ✅ — https://nikhil.healthcloud-demo.com
 - **Changed the live link** from the apex `healthcloud-demo.com` to the subdomain
   **`https://nikhil.healthcloud-demo.com`** (free — a subdomain of the domain already owned; a different apex

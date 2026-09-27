@@ -1367,6 +1367,12 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
     on the box `docker compose pull && docker compose up -d` (or `terraform apply` if user-data/`image_tag` changed —
     `user_data_replace_on_change` recreates the box, which re-seeds the DB). Set/reset the 14 passwords with
     `./set-demo-passwords.sh "$(terraform output -raw cognito_user_pool_id)"`.
+  - **Hosted-UI branding IS now in Terraform (2026-09-27).** The Cognito sign-in page's HealthCloud logo + dark-navy/
+    teal theme is declared as **`aws_cognito_user_pool_ui_customization.app`** in `cognito.tf` (CSS + logo committed at
+    `infrastructure/ec2-demo/cognito-ui/hosted-ui.css` + `logo.png`), so a `terraform apply`/rebuild restores it
+    automatically — unlike the **ECS** pool, where branding is AWS-only drift (`set-ui-customization`, reverts on
+    apply). This was a real bug: the fresh EC2-demo pool showed Cognito's plain default page (no logo) because the
+    branding had never been copied to it; fixed by copying the old client's CSS+logo, then codifying it here.
   - **Deploy gotchas (baked into the config; avoid re-discovering):** (1) the **GHCR images are `linux/amd64` only**
     (CI builds amd64), so the box **must be x86_64** — NOT a Graviton `t4g`. (2) **`t3.micro` (1 GB) OOMs** running
     Postgres+JVM+nginx+Caddy (SSM goes `ConnectionLost` while EC2 status stays "ok") → **`t3.small` (2 GB)** + swap +

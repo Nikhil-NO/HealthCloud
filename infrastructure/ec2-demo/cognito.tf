@@ -70,6 +70,22 @@ resource "aws_cognito_user_pool_domain" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
+# Hosted-UI branding (logo + CSS) for the sign-in page. This is otherwise AWS-only drift: Cognito stores
+# UI customization per client, NOT in Terraform, so a recreated pool loses the HealthCloud branding and
+# falls back to Cognito's plain default page. Declaring it here makes `terraform apply` restore the dark
+# navy + teal theme and the logo automatically. The CSS + logo live beside this config in cognito-ui/
+# (synthetic branding, safe to commit). The customizable class names are Cognito's fixed vocabulary.
+resource "aws_cognito_user_pool_ui_customization" "app" {
+  user_pool_id = aws_cognito_user_pool.main.id
+  client_id    = aws_cognito_user_pool_client.app.id
+
+  css        = file("${path.module}/cognito-ui/hosted-ui.css")
+  image_file = filebase64("${path.module}/cognito-ui/logo.png")
+
+  # The hosted-UI domain must exist before customization can attach to the pool.
+  depends_on = [aws_cognito_user_pool_domain.main]
+}
+
 # The 14 synthetic demo users (one per seeded AppUser email). NO password here — a post-apply script
 # sets the published synthetic passwords (see README). SUPPRESS = no invitation email.
 resource "aws_cognito_user" "seed" {
