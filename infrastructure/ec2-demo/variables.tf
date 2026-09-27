@@ -20,7 +20,13 @@ variable "environment" {
 }
 
 variable "domain_name" {
-  description = "The custom domain the demo is served on (apex). Its DNS A record is pointed at this box's Elastic IP after apply."
+  description = "The canonical host the demo is SERVED on (Caddy issues its cert; the OIDC callback uses it). A subdomain of apex_domain."
+  type        = string
+  default     = "nikhil.healthcloud-demo.com"
+}
+
+variable "apex_domain" {
+  description = "The registered domain. Its apex + www redirect to domain_name, so every spelling of the link resolves to the canonical host."
   type        = string
   default     = "healthcloud-demo.com"
 }

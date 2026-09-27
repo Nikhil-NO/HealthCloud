@@ -32,7 +32,8 @@ output "cognito_hosted_ui_domain" {
 output "next_steps" {
   description = "What to do after apply."
   value       = <<-EOT
-    1. DNS (at Namecheap): add an A record  @ -> ${aws_eip.demo.public_ip}  and  www -> ${aws_eip.demo.public_ip}
+    1. DNS (at Namecheap, on ${var.apex_domain}): add an A record  ${local.subdomain_host} -> ${aws_eip.demo.public_ip}
+       (keep the existing apex "@" + "www" A records → they 301-redirect to the canonical host).
     2. Wait for DNS to propagate, then Caddy auto-issues HTTPS for ${var.domain_name} (a few minutes).
     3. Set the 14 demo passwords in Cognito: run ./set-demo-passwords.sh ${aws_cognito_user_pool.main.id}
     4. Open ${local.app_url} and sign in with any role (published synthetic passwords on the login page).

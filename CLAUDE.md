@@ -1341,7 +1341,7 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
   Everything in Phase 10 so far is deliberately **local-only and $0**; the first cost/account-needed step (S3
   remote-state bootstrap, then real resources) is a future slice that must be announced and approved. This mirrors
   the user's standing instruction to flag any AWS entry.
-- **⚠️ Always-on portfolio demo — DEPLOYED & LIVE (post-roadmap, 2026-09-26): `https://healthcloud-demo.com`.**
+- **⚠️ Always-on portfolio demo — DEPLOYED & LIVE (post-roadmap, 2026-09-26): `https://nikhil.healthcloud-demo.com`.**
   A permanent, always-up clickable link for the resume/LinkedIn/portfolio (recruiters visit at unpredictable times),
   since the ~$70/mo on-demand ECS+ALB+CloudFront stack is too costly to keep live. It runs the whole app on **one
   EC2 box** via **Docker Compose** (Postgres + backend + frontend nginx + **Caddy** for auto Let's Encrypt HTTPS),
@@ -1351,11 +1351,16 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
   ECS/Fargate/Terraform architecture **stays in the repo + evidence pack** as the production-shape showcase (nothing
   lost — same app/data/design; only the live link's hosting is cheaper). **AWS credibility comes from the built code
   + IaC + evidence, not from where the live link points.**
-  - **Live facts:** URL `https://healthcloud-demo.com` (+ `www` → 301 apex), Elastic IP **98.89.224.158**, instance
-    **`i-05d7456feb675065b`** (**t3.small**, x86_64, AL2023), Cognito pool **`us-east-1_nnLesE6Aq`**, client
-    `5r1hru11kptsl1mlamii8v01o2`, hosted UI `healthcloud-demo-927747714796.auth.us-east-1.amazoncognito.com`. Runs
-    the **`demo,cognito`** profile (no dev-login). 14 synthetic users, passwords = the published login-page values.
-  - **Operate it:** shell via **SSM** (`aws ssm start-session --target i-05d7456feb675065b`), app lives in
+  - **Live facts:** canonical URL `https://nikhil.healthcloud-demo.com` (`domain_name`; the apex
+    `healthcloud-demo.com` + `www` **301-redirect** to it — `apex_domain`, handled in the Caddyfile), Elastic IP
+    **98.89.224.158**, instance **`i-029fed00d7a8b3537`** (**t3.small**, x86_64, AL2023; the id changes on any
+    user-data/domain change since `user_data_replace_on_change` replaces the box), Cognito pool
+    **`us-east-1_nnLesE6Aq`**, client `5r1hru11kptsl1mlamii8v01o2`, hosted UI
+    `healthcloud-demo-927747714796.auth.us-east-1.amazoncognito.com`. Runs the **`demo,cognito`** profile (no
+    dev-login). 14 synthetic users, passwords = the published login-page values. Changing the served name = edit
+    `domain_name`/`apex_domain` + `terraform apply` (updates the Cognito callback + SSM env + replaces the box) +
+    a DNS A record for the new host → the EIP.
+  - **Operate it:** shell via **SSM** (`aws ssm start-session --target <current instance id>`), app lives in
     `/opt/healthcloud/` (`docker compose ps|logs|pull|up -d`). Secrets (DB, audit HMAC, Cognito client secret) are in
     **SSM Parameter Store SecureString `/healthcloud-demo/env`** (the box reads it once at boot into `.env`); no SSH,
     IMDSv2 required, a 2 GB swapfile, `JAVA_TOOL_OPTIONS=-Xmx768m`. Update the app: make CI publish new GHCR images →
@@ -1372,8 +1377,9 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
     `redirect_uri` is **pinned** to the HTTPS domain via env (Caddy→nginx→backend is an HTTP hop, same lesson as
     CloudFront→ALB). (7) `set-demo-passwords.sh` uses a plain indexed array — macOS bash 3.2 has no `declare -A`.
   - **Domain:** **`healthcloud-demo.com`** (Namecheap, order 215184114, auto-renew, free WhoisGuard). Namecheap
-    **BasicDNS** with two A records (`@` + `www` → the Elastic IP); the default **parking** records (a `@` URL-Redirect
-    + a `www` CNAME → parkingpage) had to be deleted. The email SPF TXT record is left as-is.
+    **BasicDNS** with three A records (`nikhil` + `@` + `www` → the Elastic IP; `nikhil` is the served host, apex +
+    www redirect to it); the default **parking** records (a `@` URL-Redirect + a `www` CNAME → parkingpage) had to be
+    deleted. The email SPF TXT record is left as-is.
   - **Budget guardrail:** AWS Budget **`HealthCloudProject-monthly`** ($5/mo, email alerts).
   - **⚠️ On-demand ECS stack cost:** the ECS/ALB/RDS/CloudFront stack (pool `us-east-1_YA95ksq5k`, CloudFront
     `d1z6dornrdwo9.cloudfront.net`) may still be RUNNING (~$0.10/hr ≈ ~$72/mo). It should be `terraform destroy`ed

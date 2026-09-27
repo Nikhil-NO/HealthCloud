@@ -19,6 +19,7 @@ locals {
     backend_image  = local.backend_image
     frontend_image = local.frontend_image
     domain_name    = var.domain_name
+    apex_domain    = var.apex_domain
     acme_email     = var.acme_email
 
     db_user     = "healthcloud"

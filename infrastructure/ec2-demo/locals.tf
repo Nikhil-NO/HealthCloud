@@ -14,10 +14,14 @@ locals {
   backend_image  = "ghcr.io/${var.github_owner}/healthcloud-backend:${var.image_tag}"
   frontend_image = "ghcr.io/${var.github_owner}/healthcloud-frontend:${var.image_tag}"
 
-  # Public URLs (Caddy serves HTTPS on the apex domain; the OIDC callback path is Spring's default).
+  # Public URLs (Caddy serves HTTPS on the canonical host; the OIDC callback path is Spring's default).
   app_url      = "https://${var.domain_name}"
   redirect_uri = "https://${var.domain_name}/login/oauth2/code/cognito"
   logout_uri   = "https://${var.domain_name}/"
+
+  # The subdomain label of the canonical host (e.g. "nikhil" from "nikhil.healthcloud-demo.com") — the
+  # Host value for the DNS A record the user adds. Empty if domain_name is the apex itself.
+  subdomain_host = trimsuffix(var.domain_name, ".${var.apex_domain}")
 
   # The 14 synthetic demo users, one per seeded AppUser email (both orgs × 7 roles). Cognito needs a
   # matching user for each so a recruiter can sign in as any role. Passwords are NOT set here (that

@@ -457,6 +457,24 @@
 
 ## Log (newest first)
 
+### 2026-09-27 — Always-on demo renamed to a subdomain ✅ — https://nikhil.healthcloud-demo.com
+- **Changed the live link** from the apex `healthcloud-demo.com` to the subdomain
+  **`https://nikhil.healthcloud-demo.com`** (free — a subdomain of the domain already owned; a different apex
+  like `healthcloud-nikhil.com` would have required buying a new domain). The apex + `www` now **301-redirect**
+  to the canonical subdomain, so no spelling of the link breaks.
+- **Config (`infrastructure/ec2-demo/`):** `domain_name` → `nikhil.healthcloud-demo.com`, new `apex_domain`
+  var (`healthcloud-demo.com`); the Caddyfile serves `{$DOMAIN}` and redirects `{$APEX_DOMAIN}` + `www` to it;
+  `env.tftpl` gains `APEX_DOMAIN`; outputs/README updated. `terraform apply` = **1 add / 3 change / 1 destroy** —
+  updated the Cognito callback/logout URLs + the SSM env param, and **replaced the box** (the Caddyfile lives in
+  user-data, so `user_data_replace_on_change` recreates it; DB re-seeds, EIP + Cognito pool + the 14 passwords
+  unchanged). New instance `i-029fed00d7a8b3537`, same IP `98.89.224.158`.
+- **DNS:** added an `A nikhil → 98.89.224.158` record (kept apex `@` + `www`). Verified authoritative.
+- **Verified end-to-end:** `nikhil` health 200, valid Let's Encrypt cert (issued on first boot since DNS was
+  already correct — no Caddy restart needed this time), apex → 301 → nikhil, OIDC `redirect_uri` = the nikhil
+  callback, branded landing page renders.
+- **Note (case):** domain/host names are case-insensitive — the link can be written `nikhil.HealthCloud-Demo.com`
+  on a resume and still resolves; browsers display it lowercased.
+
 ### 2026-09-26 — Always-on EC2 demo DEPLOYED & LIVE ✅ (post-roadmap) — https://healthcloud-demo.com
 - **Why:** recruiters visit at unpredictable times, so the portfolio needs a **permanent, always-up**
   clickable link. The on-demand ECS/Fargate/CloudFront stack (~$70/mo) is too costly to keep live, so

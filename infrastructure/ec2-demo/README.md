@@ -40,7 +40,9 @@ internet ──▶ Caddy (:443, auto Let's Encrypt TLS)
 1. **GHCR images are public.** In the GitHub repo → Packages, make `healthcloud-backend` and
    `healthcloud-frontend` public (else the box can't pull them). CI already builds/pushes them on
    `main`.
-2. **Domain owned:** `healthcloud-demo.com` (Namecheap). DNS is pointed at the box *after* apply.
+2. **Domain owned:** `healthcloud-demo.com` (Namecheap). The demo is served on the subdomain
+   `nikhil.healthcloud-demo.com` (`domain_name`); the apex + `www` redirect to it. DNS is pointed at the
+   box *after* apply.
 3. AWS creds for the account, Terraform ≥ 1.9, the state bucket (already created by
    `../terraform/bootstrap`).
 
@@ -61,10 +63,10 @@ terraform plan                 # review — creates ~14 Cognito users + 1 box + 
 terraform apply                # FIRST cost step — announce + get go-ahead first
 
 # then follow the printed `next_steps`:
-#   1. DNS at Namecheap:  A  @ -> <elastic_ip> ,  A  www -> <elastic_ip>
+#   1. DNS at Namecheap:  A  nikhil -> <elastic_ip>   (+ keep apex "@" and "www" A records, which redirect)
 #   2. wait for DNS; Caddy issues HTTPS automatically
 #   3. ./set-demo-passwords.sh "$(terraform output -raw cognito_user_pool_id)"
-#   4. open https://healthcloud-demo.com and sign in as any role
+#   4. open https://nikhil.healthcloud-demo.com and sign in as any role
 ```
 
 Offline check only (no AWS calls): `terraform init -backend=false && terraform validate`.

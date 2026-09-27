@@ -8,14 +8,15 @@
 	email {$ACME_EMAIL}
 }
 
-# The app on the apex domain, HTTPS auto-provisioned. Caddy terminates TLS and proxies to the
+# The app on the canonical host, HTTPS auto-provisioned. Caddy terminates TLS and proxies to the
 # frontend nginx container, which serves the SPA and reverse-proxies the API/OIDC paths to the backend.
 {$DOMAIN} {
 	encode gzip zstd
 	reverse_proxy frontend:8080
 }
 
-# Redirect www → apex so there is a single canonical origin (matches the one Cognito callback URL).
-www.{$DOMAIN} {
+# Redirect the registered apex + its www to the canonical host, so every spelling of the link lands on
+# the single canonical origin (which is the one the Cognito callback is registered for).
+{$APEX_DOMAIN}, www.{$APEX_DOMAIN} {
 	redir https://{$DOMAIN}{uri} permanent
 }
