@@ -38,6 +38,9 @@
 ![Testing Library](https://img.shields.io/badge/Testing%20Library-E33332?logo=testinglibrary&logoColor=white)
 ![axe-core](https://img.shields.io/badge/axe--core-663399)
 
+🔗 **Live demo:** **https://nikhil.healthcloud-demo.com** — sign in as any role with the published
+synthetic demo credentials on the login page (throwaway Cognito accounts reaching no real data).
+
 **HealthCloud** is a multi-tenant, production-grade platform for healthcare **care coordination**
 and **claims adjudication**. Its engineering value is not in any single feature — it is in answering,
 on every request, the question that authentication alone cannot: *should **this** person see **this**
