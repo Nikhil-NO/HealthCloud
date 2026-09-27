@@ -6346,3 +6346,123 @@ reference CloudFront, so mind the usual `-target`/recreate caveats when touching
 A: UI customization is attached to the pool's hosted UI, which only exists once the
 `aws_cognito_user_pool_domain` is created. Without an explicit (or implicit) dependency, Terraform could try
 to set customization before the hosted UI exists and fail; `depends_on` orders it correctly.
+
+---
+
+## Tearing down an on-demand cloud stack safely with Terraform — 2026-09-27
+
+### What we built
+Nothing new was built this session — we **removed** running infrastructure. The on-demand
+ECS/ALB/RDS/CloudFront showcase stack (`infrastructure/terraform/`) had been left running after the
+Cognito HTTPS arc, costing ~$0.08–0.10/hr (≈ **$72/mo**). Now that the always-on EC2 demo
+(`nikhil.healthcloud-demo.com`) is the trusted live link, we `terraform destroy`ed the ECS stack to
+stop the meter, while keeping the whole thing re-creatable from the committed IaC.
+
+### How it works
+The teardown followed the project's **AWS-mutation discipline** — announce cost, show a read-only
+plan, then mutate only on explicit go-ahead:
+
+1. **Orient + init.** `terraform init -input=false` against the S3 remote backend (state key
+   `healthcloud/dev/terraform.tfstate`). Confirmed this is a *different* config/state from the EC2 demo
+   (`infrastructure/ec2-demo/`, key `healthcloud/ec2-demo/…`), so the two never touch.
+2. **Read-only destroy plan first.** `terraform plan -destroy` → **0 to add, 0 to change, 41 to
+   destroy**. This is the safety gate: it enumerates exactly what comes down before anything is deleted.
+3. **Destroy.** `terraform destroy -auto-approve` (run in the background — CloudFront disable+delete is
+   the ~15–20 min long pole). Result: **`Destroy complete! Resources: 41 destroyed`**, `terraform state
+   list` now empty.
+4. **Verify blast radius.** `curl` the EC2 demo (`https://nikhil.healthcloud-demo.com/actuator/health/
+   liveness` → **200**, home → **200**) and the old ECS CloudFront (→ **HTTP 000**, gone). The
+   independent stack was unaffected; the destroyed one is unreachable, exactly as intended.
+
+```bash
+terraform init -input=false
+terraform plan -destroy -input=false            # read-only gate: 0 add / 0 change / 41 destroy
+terraform destroy -auto-approve -input=false    # only after explicit go-ahead
+terraform state list | wc -l                    # 0 → clean
+```
+
+### Key points to remember
+- **Independent stacks = independent blast radius.** Because the ECS showcase and the EC2 demo are
+  separate Terraform configs with separate state keys (sharing only the S3 *bucket*), destroying one
+  provably cannot break the other. Splitting them earlier is what made this teardown a one-liner with no
+  risk to the live link.
+- **`terraform plan -destroy` is the confirmation step**, not ceremony — it's the artifact that lets you
+  (and the user) see the 41 resources before committing. Pair it with a post-destroy `curl` of both the
+  torn-down endpoint (should fail) and the surviving one (should still 200).
+- **Destroy ≠ losing the work.** The stack is 100% re-creatable from the committed `.tf` files: a later
+  `terraform apply` re-stands it up (then re-push arm64 images to ECR via crane). The IaC + the evidence
+  pack remain the production-shape AWS showcase — AWS credibility comes from the code + IaC + evidence,
+  not from paying to keep infra idling.
+- **What persists as code (not billed):** the S3 tfstate bucket (owned by the separate `bootstrap/`
+  config), and both stacks' `.tf` including their Cognito configs. What was billed and is now gone: ALB,
+  Fargate, RDS, public IPv4, CloudFront.
+- **`force_delete` on the ECR repos** meant the images inside were removed with the repos. That's fine —
+  CI still publishes to GHCR, and ECR images are re-pushable on demand.
+- A transient DNS blip (`dial tcp: lookup ec2.us-east-1.amazonaws.com: no such host`) hit the first plan
+  during a data-source read; simply re-running succeeded. Terraform data-source reads are not
+  automatically retried, so a flaky network can fail a plan without any state damage — just retry.
+
+### Failures and how we fixed them
+- **Transient DNS resolution failure on the first `plan -destroy`.** Symptom: `Error: reading EC2 Managed
+  Prefix List: … no such host` for `ec2.us-east-1.amazonaws.com` while reading
+  `data.aws_ec2_managed_prefix_list.cloudfront`. Root cause: a momentary DNS/network hiccup, not a config
+  or credential problem (the state refresh right before it had succeeded). Fix: re-ran the same command —
+  it completed cleanly. No other failures; the destroy itself exited 0.
+
+### Interview Q&A
+
+#### 1. Beginner
+**Q: What does `terraform destroy` do?**
+A: It deletes all the real cloud resources Terraform is tracking in that configuration's state, in
+dependency-safe order, and empties the state. Here it removed 41 AWS resources (ECS, ALB, RDS,
+CloudFront, VPC, Cognito, ECR, IAM, secrets).
+
+**Q: Why destroy something you built?**
+A: Cost. The stack costs ~$72/mo to keep running; a portfolio demo doesn't need two live copies. We keep
+the cheaper always-on EC2 demo as the live link and tear down the pricier ECS stack, which is fully
+re-creatable from the committed Terraform whenever we want to show it.
+
+**Q: How do you know the destroy didn't break the live demo?**
+A: The two are separate Terraform configs with separate state, and afterward we `curl`ed the demo
+(`/actuator/health/liveness` → 200) and the old ECS CloudFront (→ unreachable). Proof, not assumption.
+
+#### 2. Intermediate
+**Q: Why run `terraform plan -destroy` before `terraform destroy`?**
+A: It's a read-only dry run that lists exactly which resources will be deleted (0 add / 0 change / 41
+destroy here) before any mutation happens. It's the review/approval gate — you confirm there are no
+surprises (e.g. it isn't about to touch a shared resource) and that the count matches expectations.
+
+**Q: How is the ECS stack isolated from the EC2 demo if they share an AWS account and state bucket?**
+A: They're distinct Terraform configurations with **distinct state keys**
+(`healthcloud/dev/terraform.tfstate` vs `healthcloud/ec2-demo/terraform.tfstate`) in the same S3 bucket.
+Terraform only manages the resources in the state it's pointed at, so a destroy in one config can't touch
+resources recorded in the other's state. They also use separate Cognito pools, so there's no shared
+runtime dependency either.
+
+**Q: Why did the destroy take ~20 minutes?**
+A: CloudFront. A distribution must be **disabled and propagated to all edge locations before it can be
+deleted**, which takes ~15–20 min. That dominates the wall-clock; everything else (ECS drain, RDS delete,
+VPC/ENI teardown) is minutes or seconds. We ran it in the background so the session stayed responsive.
+
+#### 3. Advanced
+**Q: The ECR repos had `force_delete = true`. What's the trade-off, and how do you recover the images?**
+A: `force_delete` lets Terraform delete a repository even if it still holds images — without it the
+destroy would fail on a non-empty repo. The trade-off is that the images are destroyed with the repo. We
+accept it because the images are reproducible: CI publishes them to GHCR, and for ECS we rebuild the
+arm64 images and `crane push` them back on the next `apply`. The registry is a cache, not a source of
+truth.
+
+**Q: A data-source read failed mid-plan with a DNS error. Could that have corrupted state?**
+A: No. `terraform plan` (even `-destroy`) doesn't write state; it refreshes in memory and computes a diff.
+A failed data-source read aborts the plan before any apply, so there's nothing to corrupt — you just
+re-run. State only changes during `apply`/`destroy`, and those write incrementally per-resource to the
+S3 backend (with `use_lockfile` locking), so even a mid-destroy failure leaves a consistent state you can
+resume from.
+
+**Q: If you had to re-stand-up this exact stack tomorrow, what would you run and what would differ?**
+A: `terraform init && terraform apply` from `infrastructure/terraform/` recreates all 41 resources — but
+several IDs would be **new** (a fresh CloudFront domain, new Cognito pool id, new RDS endpoint, new ALB
+DNS), because those are AWS-assigned on creation. Anything that references them (the Cognito callback
+URLs pinned to the CloudFront domain, the OIDC `redirect_uri` env) is derived in the config, so it
+reconciles automatically — but any *external* record (a hardcoded URL in docs, a DNS entry) would need
+updating. Then re-push the arm64 images to the freshly-created ECR repos before the ECS tasks can pull.

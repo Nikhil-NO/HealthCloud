@@ -1387,10 +1387,14 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
     www redirect to it); the default **parking** records (a `@` URL-Redirect + a `www` CNAME → parkingpage) had to be
     deleted. The email SPF TXT record is left as-is.
   - **Budget guardrail:** AWS Budget **`HealthCloudProject-monthly`** ($5/mo, email alerts).
-  - **⚠️ On-demand ECS stack cost:** the ECS/ALB/RDS/CloudFront stack (pool `us-east-1_YA95ksq5k`, CloudFront
-    `d1z6dornrdwo9.cloudfront.net`) may still be RUNNING (~$0.10/hr ≈ ~$72/mo). It should be `terraform destroy`ed
-    (from `infrastructure/terraform/`, approval-gated) once the always-on demo is trusted — that is the big credit
-    saver. The two stacks are independent, so destroying it does NOT affect `healthcloud-demo.com`.
+  - **On-demand ECS stack — DESTROYED (2026-09-27), back to ~$0.** The ECS/ALB/RDS/CloudFront stack (pool
+    `us-east-1_YA95ksq5k`, CloudFront `d1z6dornrdwo9.cloudfront.net`) was `terraform destroy`ed from
+    `infrastructure/terraform/` (41 resources removed, `Destroy complete`) now that the always-on EC2 demo is
+    trusted — the big credit saver (was ~$0.10/hr ≈ ~$72/mo). The two stacks are independent, so this did **not**
+    affect `healthcloud-demo.com` (verified live 200 right after). The stack is fully re-creatable from the
+    committed `infrastructure/terraform/` config (`terraform apply`, then re-push arm64 images to ECR via crane) —
+    only the running infra was torn down; the S3 state bucket + the `bootstrap/` config are kept. Re-standing it up
+    is approval-gated and restarts the hourly meter.
   - Credits: **$100 sign-up granted; the extra $100 is EARNED** via 5 console activities ($20 each: EC2, RDS, Lambda,
     Bedrock, AWS Budgets). At ~$15/mo the EC2 demo alone stretches $100 ~6+ months. Credits expire 12 months after signup.
 - **Container images are the deploy artifacts.** Backend: multi-stage `backend/Dockerfile` (build on JDK 25, run
