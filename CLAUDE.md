@@ -1341,6 +1341,35 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
   Everything in Phase 10 so far is deliberately **local-only and $0**; the first cost/account-needed step (S3
   remote-state bootstrap, then real resources) is a future slice that must be announced and approved. This mirrors
   the user's standing instruction to flag any AWS entry.
+- **⚠️ Always-on portfolio demo — IN PROGRESS (post-roadmap, started 2026-09-26).** The user wants a **permanent,
+  always-up clickable link** for their resume/LinkedIn/portfolio (recruiters visit at unpredictable times), which the
+  ~$70/mo on-demand ECS+ALB+CloudFront stack is too expensive to sustain. **Decision: deploy a cheap always-on
+  copy on a single EC2 `t4g.micro`** (free tier 12 months, then ~$6–10/mo — covered by credits), running the whole
+  app via Docker Compose (Postgres + backend + frontend + **Caddy** for auto free HTTPS), images pulled from **GHCR**
+  (CI already publishes them). To be written as Terraform in a **new `infrastructure/ec2-demo/`** folder, **independent
+  of the on-demand ECS stack** (its own login — a fresh Cognito setup or dev-login — so a `terraform destroy` of the
+  ECS stack never breaks the demo). The full ECS/Fargate/Terraform architecture **stays in the repo + evidence pack**
+  as the on-demand showcase (nothing lost; the app/data/design are identical — only the live link's hosting is
+  simpler). **Rationale recorded for the user (a beginner):** AWS credibility comes from the built code + Terraform +
+  evidence, NOT from where the live link points, so the cheap EC2 link loses no interview credibility.
+  - **Domain owned:** **`healthcloud-demo.com`** (bought on Namecheap 2026-09-26, order 215184114, auto-renew on,
+    ~$14.98/yr renewal, free WhoisGuard). DNS still at Namecheap defaults — point it at the EC2's Elastic IP when the
+    box is up (A record), then Caddy issues HTTPS; register the domain as a Cognito callback if Cognito is used.
+  - **Budget guardrail exists:** an AWS Budget **`HealthCloudProject-monthly`** ($5/mo cost budget, email alerts) —
+    the user set it up in the console (also earns the $20 "AWS Budgets" free-tier activity credit).
+  - **⚠️ AWS state found 2026-09-26 (read-only check):** the **on-demand ECS stack was left RUNNING** since the
+    Sept-25 evidence capture — RDS `healthcloud-dev-postgres` (available), ALB `healthcloud-dev-alb` (active), ECS
+    cluster, CloudFront `d1z6dornrdwo9.cloudfront.net` (enabled), 2 Elastic IPs — billing ~$0.10/hr (the source of
+    the ~$5.58 MTD). It **should be `terraform destroy`ed** (on-demand rule) to stop cost, but the user has **not yet
+    approved** that destroy (they're weighing that recreating the exact pool needs manual redo — see next point).
+    Cognito pool **`us-east-1_YA95ksq5k`** (`healthcloud-dev-users`, ~14 users) exists but is part of that stack.
+  - **Terraform-vs-manual gotcha for a recreate:** `terraform apply` rebuilds RDS/ALB/ECS/CloudFront/VPC/Cognito
+    pool + **only the 2 TF-defined Cognito users**; the **other ~12 demo users, all user passwords, the hosted-UI
+    branding, and the ECR image contents were set out-of-band (CLI/crane)** and would need re-doing after a destroy
+    (DB data re-seeds automatically; the CloudFront URL changes). This is why the always-on EC2 demo gets its **own
+    fully-scripted, independent login** rather than depending on this pool.
+  - The **$100 AWS sign-up credit is granted; the extra $100 is EARNED** by completing 5 console activities ($20 each:
+    EC2, RDS, Lambda, Bedrock, AWS Budgets) — see the AWS Free Plan. Credits expire 12 months after signup.
 - **Container images are the deploy artifacts.** Backend: multi-stage `backend/Dockerfile` (build on JDK 25, run
   on a slim JRE) as a **non-root** user with an `/actuator/health` HEALTHCHECK; tests are skipped in the image
   build (they need Testcontainers and already gate in CI). Frontend: multi-stage `frontend/Dockerfile` (build the
