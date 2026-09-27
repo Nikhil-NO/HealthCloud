@@ -1386,7 +1386,7 @@ to the AWS deployment, Alertmanager routing, RDS PITR/snapshot DR — all on-dem
     **BasicDNS** with three A records (`nikhil` + `@` + `www` → the Elastic IP; `nikhil` is the served host, apex +
     www redirect to it); the default **parking** records (a `@` URL-Redirect + a `www` CNAME → parkingpage) had to be
     deleted. The email SPF TXT record is left as-is.
-  - **Budget guardrail:** AWS Budget **`HealthCloudProject-monthly`** ($5/mo, email alerts).
+  - **Budget guardrail:** AWS Budget **`HealthCloudProject-monthly`** ($20/mo, email alerts at 85% + 100% actual + 100% forecasted). Raised from $5 → $20 on 2026-09-27 after the ECS stack teardown, to match the always-on EC2 demo's ~$15/mo gross run-rate with ~$5 headroom (so it only fires on unexpected spend, e.g. an accidental ECS re-apply). Tracks **gross** cost (`IncludeCredit=false`) so it stays a real credit-burn guardrail while credits cover the card.
   - **On-demand ECS stack — DESTROYED (2026-09-27), back to ~$0.** The ECS/ALB/RDS/CloudFront stack (pool
     `us-east-1_YA95ksq5k`, CloudFront `d1z6dornrdwo9.cloudfront.net`) was `terraform destroy`ed from
     `infrastructure/terraform/` (41 resources removed, `Destroy complete`) now that the always-on EC2 demo is
