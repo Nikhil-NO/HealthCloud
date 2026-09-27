@@ -6073,3 +6073,157 @@ A: A browser handles crop (via `clip`) and, through `<canvas>`, recolor/resize/f
 for one-off asset tweaks. For batch processing, precise color management, lossless transforms, or CI
 automation, a dedicated tool (ImageMagick, libvips/sharp, PIL) is faster and scriptable without spinning
 up Chromium. The browser approach is a pragmatic fallback when those aren't installed.
+
+---
+
+## Deploying an always-on demo on one EC2 box (Docker Compose + Caddy + Cognito) — 2026-09-26
+
+### What we built
+A **permanent, always-up** deployment of the whole app on a **single EC2 instance**, so the
+resume/LinkedIn link is clickable 24/7 — served at **`https://nikhil.healthcloud-demo.com`**. It is a
+**separate, self-contained Terraform stack** (`infrastructure/ec2-demo/`) from the on-demand ECS/Fargate
+showcase (`infrastructure/terraform/`), with **its own state key and its own Cognito pool**, so tearing
+down the expensive ECS stack never breaks the demo. The motivation: the ECS+ALB+CloudFront stack costs
+~$70/mo to keep live; one small EC2 box is ~$15/mo (from AWS credits).
+
+### How it works
+- **One `t3.small` box** (x86_64, Amazon Linux 2023) in the account's **default VPC** (no custom network
+  to build/pay for). A security group opens only **80/443**; there is **no SSH** — shell access is via
+  **SSM Session Manager** (`aws ssm start-session --target <id>`), so there's no key pair to manage.
+- **The app runs as Docker Compose on the box** (`infrastructure/ec2-demo/docker-compose.yml`): Postgres +
+  backend + frontend nginx + **Caddy**. Only Caddy publishes ports; the rest are on the internal Docker
+  network. Caddy auto-obtains + renews a **Let's Encrypt** cert and reverse-proxies to the frontend nginx,
+  which in turn proxies `/api`+`/actuator`+`/oauth2` to the backend (same-origin, so cookies stay first-party).
+- **Images come from GHCR** — the ones CI already publishes (`ghcr.io/nikhil-oggu/healthcloud-backend|frontend`).
+- **Its own Cognito pool** (`cognito.tf`) on the `demo,cognito` profile (no dev-login bypass), with **14
+  synthetic users** (both orgs × 7 roles). Passwords are set **post-apply** by `set-demo-passwords.sh`
+  (they can't live in Terraform state).
+- **Secrets flow (SSM Parameter Store):** Terraform generates the DB + audit-HMAC passwords
+  (`random_password`) and reads the Cognito client secret from the client resource, renders them into a
+  `.env` (`templates/env.tftpl`), and stores the whole thing as **one SSM SecureString**
+  (`/healthcloud-demo/env`). The instance's IAM role can read exactly that parameter; at boot, user-data
+  fetches it into `/opt/healthcloud/.env`. So **no secret is ever in user-data** (which is readable from
+  instance metadata) or in the repo.
+- **user-data** (`templates/user-data.sh.tftpl`) installs Docker + the Compose plugin + AWS CLI, writes a
+  2 GB swapfile, injects the (non-secret) compose + Caddyfile verbatim, fetches the `.env` from SSM, and
+  `docker compose up -d`.
+- **Pinned OIDC redirect_uri:** because Caddy terminates TLS and proxies HTTP to nginx→backend, Spring
+  would compute an `http://` callback that Cognito rejects — so the callback is **pinned** to the HTTPS
+  domain via `SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_COGNITO_REDIRECTURI` (same lesson as CloudFront→ALB
+  on the ECS stack).
+
+### Key points to remember
+- **The instance architecture must match the image architecture.** CI builds the GHCR images as
+  **`linux/amd64` only**, so the box must be **x86_64** (`t3.small`), NOT a Graviton `t4g`. An amd64 image
+  won't run on ARM.
+- **Right-size for the JVM.** `t3.micro` (1 GB) can't run Postgres + a Spring Boot JVM + nginx + Caddy — it
+  OOMs. `t3.small` (2 GB) + a **2 GB swapfile** + a **capped heap** (`JAVA_TOOL_OPTIONS=-Xmx768m`) fits
+  comfortably (the ECS task had given the app 2 GB, which was the hint).
+- **Not every AZ offers every instance type.** The first default subnet was in `us-east-1e`, which has no
+  `t3.*` — `RunInstances` 400s. Use an `aws_ec2_instance_type_offerings` data source to pick a subnet only
+  in a supported AZ (`network.tf`).
+- **GHCR package visibility is separate from repo visibility.** A public repo can still have private
+  packages. Verify anonymous pullability directly:
+  ```bash
+  TOKEN=$(curl -s "https://ghcr.io/token?service=ghcr.io&scope=repository:<owner>/<img>:pull" | ...)
+  curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" \
+    https://ghcr.io/v2/<owner>/<img>/manifests/latest    # 200 = public, 403 = still private
+  ```
+- **Caddy issues a cert only after DNS points at the box.** If Caddy boots before DNS is correct, ACME
+  fails and it backs off; **`docker compose restart caddy`** retriggers issuance once DNS resolves. If DNS
+  is already correct at first boot, the cert is obtained automatically (tls-alpn-01).
+- **Check DNS against the authoritative nameservers, not a cache**, to tell "not saved yet" from "still
+  propagating": `dig +short @dns1.registrar-servers.com <host> A`.
+- **Namecheap serves a *parking* page by default.** You must delete the default `@` URL-Redirect + the
+  `www → parkingpage.namecheap.com` CNAME, then add A records — and click the **green ✓** to save each row
+  (unsaved rows are silently discarded).
+- **SSM Session Manager** gives a shell with no SSH port and no key: `AmazonSSMManagedInstanceCore` on the
+  instance role + outbound internet. `ConnectionLost` while EC2 status stays "ok" is a strong **OOM** signal.
+- **Renaming the link:** you can't rename a registered domain. A **subdomain** of a domain you already own
+  (`nikhil.healthcloud-demo.com`) is **free**; a different apex (`healthcloud-nikhil.com`) must be
+  purchased. Host names are **case-insensitive** (you can display capitals on a resume; it resolves the
+  same), but URL *paths* are case-sensitive. We serve one **canonical host** and 301-redirect the apex +
+  www to it, so the OIDC callback has a single registered value.
+- **`user_data_replace_on_change = true`** means editing the compose/Caddyfile/user-data **replaces the
+  instance** (the DB re-seeds — fine for synthetic data; the Elastic IP + Cognito pool survive).
+
+### Failures and how we fixed them
+- **GHCR pull denied (403).** The packages were still private after the repo was public → made each
+  package public at the **package** level and re-verified anonymously (200) before deploying.
+- **First box unreachable; SSM `ConnectionLost`, command exit `-1`, EC2 status "ok".** `t3.micro` OOMed
+  during bootstrap. Fixed by resizing to `t3.small` + swap + heap cap — all 4 containers then came up
+  healthy (~565 MB free, swap barely touched).
+- **`RunInstances` 400: "instance type t3.micro not supported in us-east-1e".** The default subnet we
+  picked was in an unsupported AZ → added the instance-type-offerings filter to `network.tf`.
+- **`terraform validate` "Invalid expression" in the user-data template.** A **comment** contained a
+  literal `${...}` which `templatefile()` tried to parse. Reworded the comment (any `${` in a `.tftpl` —
+  even in a comment — is an interpolation).
+- **`set-demo-passwords.sh` set nothing but printed "done".** It used `declare -A` (associative array),
+  unsupported by macOS's stock **bash 3.2**, so the loop ran over an empty array. Rewrote it with a plain
+  indexed array of `"email password"` pairs. Afterwards all 14 users were `CONFIRMED`.
+- **DNS kept showing the parking page.** The Advanced-DNS edits hadn't saved (green ✓ not clicked) and the
+  parking records were still present; confirmed via the **authoritative** nameservers. After deleting the
+  parking records and adding A records, `dig` against the NS returned the Elastic IP.
+- **HTTPS `tlsv1 alert internal error` right after DNS went live.** Caddy had no cert yet (its initial ACME
+  attempts predated correct DNS). `docker compose restart caddy` triggered issuance and it obtained certs
+  for apex + www in seconds.
+
+### Interview Q&A
+
+#### 1. Beginner
+**Q: Why run the demo on one EC2 box instead of the ECS/Fargate stack you built?**
+A: Cost and uptime. The full ECS+ALB+CloudFront stack is ~$70/mo, too much to leave running 24/7. Recruiters
+click a link at unpredictable times, so it must always be up. One small EC2 box running Docker Compose is
+~$15/mo (from credits) and stays live. The production-shape ECS architecture still lives in the repo +
+evidence pack as the showcase — the live link's hosting being cheaper doesn't reduce that.
+
+**Q: How does the site get HTTPS?**
+A: Caddy, a web server that automatically obtains and renews a free Let's Encrypt certificate once the
+domain's DNS points at the box. No manual cert steps.
+
+**Q: What's a subdomain, and why was `nikhil.healthcloud-demo.com` free?**
+A: A subdomain is a prefix on a domain you already own (`nikhil.` on `healthcloud-demo.com`). You can create
+unlimited subdomains for free with a DNS record. A different top-level name like `healthcloud-nikhil.com`
+would be a separate registration you'd have to buy.
+
+#### 2. Intermediate
+**Q: How are secrets kept off the box's user-data and out of the repo?**
+A: Terraform generates the DB/audit secrets and reads the Cognito client secret, renders them into a `.env`,
+and stores it as an **SSM Parameter Store SecureString**. The instance's IAM role is scoped to read exactly
+that one parameter; user-data fetches it at boot. User-data itself (readable from instance metadata) carries
+only the non-secret compose + Caddyfile. State stays in a private, encrypted S3 backend.
+
+**Q: Why must the EC2 instance be x86_64 and not Graviton?**
+A: The container images are what dictate it. CI builds them `linux/amd64` only. An amd64 image can't execute
+on an ARM64 (Graviton `t4g`) host without emulation, so the box has to be x86_64 (`t3.small`). If we wanted
+Graviton, we'd make CI publish multi-arch images.
+
+**Q: Why is the OIDC `redirect_uri` pinned via an env var?**
+A: Caddy terminates TLS and forwards plain HTTP to nginx→backend. Spring, seeing an HTTP hop, would build an
+`http://` callback URL, which Cognito rejects for a non-localhost host. Pinning the redirect_uri to the exact
+HTTPS URL registered on the Cognito client avoids the mismatch — the same issue as CloudFront→ALB.
+
+**Q: How did you diagnose the OOM without a shell?**
+A: SSM reported `ConnectionLost` and a command exit code of `-1`, while the EC2 hypervisor status stayed
+"ok". That split — instance "healthy" to AWS but its agent dead — is the classic memory-exhaustion signature.
+The fix was more RAM + swap + a heap cap.
+
+#### 3. Advanced
+**Q: The two stacks share an AWS account and an S3 state bucket. How do you keep them independent?**
+A: Different Terraform **state keys** in the same bucket (`healthcloud/ec2-demo/…` vs `healthcloud/dev/…`),
+so their state never collides, plus completely separate resources (its own VPC usage, its own Cognito pool).
+A `terraform destroy` of one operates only on its own state, so tearing down the ECS stack can't affect the
+EC2 demo.
+
+**Q: Changing the served domain replaced the instance. Why, and how would you avoid downtime?**
+A: The Caddyfile is injected through user-data, and `user_data_replace_on_change` recreates the instance on
+any user-data change — clean for IaC, but it briefly drops the site and re-seeds the DB. To avoid downtime
+you'd decouple config from user-data (e.g. put the Caddyfile in SSM/S3 and have the box pull + `caddy
+reload` without replacement), or run behind a load balancer with rolling replacement — at the cost of the
+single-box simplicity that makes this deployment cheap.
+
+**Q: What are the honest limitations of this deployment versus the ECS one?**
+A: Single box, single AZ, no managed backups, DB in a container volume (re-seeds on replace), and manual
+image updates (`docker compose pull` or a box replace). It's right for a synthetic-data portfolio demo, not
+a production posture — which is exactly why the production-shape design (managed RDS, multi-AZ, Secrets
+Manager injection, CloudFront, rolling ECS deploys) is preserved in the ECS stack and the evidence pack.
