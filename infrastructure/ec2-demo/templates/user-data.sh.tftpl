@@ -7,19 +7,28 @@
 # appears in this user-data (which is readable from instance metadata).
 set -euxo pipefail
 
+# --- Swap (headroom on a small box; keeps a memory spike during boot/seed from OOM-killing) --------
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 # --- Docker Engine ---------------------------------------------------------------------------------
 dnf update -y
 dnf install -y docker unzip
 systemctl enable --now docker
 
-# --- Docker Compose v2 plugin (arm64) --------------------------------------------------------------
+# --- Docker Compose v2 plugin (x86_64) -------------------------------------------------------------
 mkdir -p /usr/libexec/docker/cli-plugins
-curl -fsSL https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-aarch64 \
+curl -fsSL https://github.com/docker/compose/releases/download/v2.32.4/docker-compose-linux-x86_64 \
   -o /usr/libexec/docker/cli-plugins/docker-compose
 chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 
-# --- AWS CLI v2 (arm64), used to read the .env from SSM --------------------------------------------
-curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip
+# --- AWS CLI v2 (x86_64), used to read the .env from SSM -------------------------------------------
+curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
 unzip -q /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install
 

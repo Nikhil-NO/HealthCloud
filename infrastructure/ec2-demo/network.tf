@@ -8,7 +8,18 @@ data "aws_vpc" "default" {
   default = true
 }
 
-# The default subnets (one per AZ). We place the instance in the first one.
+# Which AZs actually offer our instance type — not every AZ does (e.g. us-east-1e has no t3.micro),
+# and RunInstances hard-fails if the subnet's AZ can't host the type. So we restrict subnet selection
+# to AZs that support it, rather than hardcoding one.
+data "aws_ec2_instance_type_offerings" "supported" {
+  filter {
+    name   = "instance-type"
+    values = [var.instance_type]
+  }
+  location_type = "availability-zone"
+}
+
+# The default subnets in a supported AZ. We place the instance in the first one.
 data "aws_subnets" "default" {
   filter {
     name   = "vpc-id"
@@ -17,5 +28,9 @@ data "aws_subnets" "default" {
   filter {
     name   = "default-for-az"
     values = ["true"]
+  }
+  filter {
+    name   = "availability-zone"
+    values = data.aws_ec2_instance_type_offerings.supported.locations
   }
 }

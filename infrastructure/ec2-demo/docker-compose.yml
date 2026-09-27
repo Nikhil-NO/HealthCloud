@@ -28,6 +28,9 @@ services:
     environment:
       # The datasource host is the compose service name; everything else is in .env.
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/healthcloud
+      # Cap the JVM heap so the backend + Postgres both fit on a 2 GB box (JAVA_TOOL_OPTIONS is
+      # honored automatically by the JVM). ~768 MB heap + ~256 MB off-heap leaves room for Postgres.
+      JAVA_TOOL_OPTIONS: "-Xms256m -Xmx768m"
 
   frontend:
     image: ${FRONTEND_IMAGE}

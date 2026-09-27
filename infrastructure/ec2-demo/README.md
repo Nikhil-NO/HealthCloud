@@ -20,7 +20,10 @@ internet ──▶ Caddy (:443, auto Let's Encrypt TLS)
                                └─▶ postgres (:5432, Docker volume)
 ```
 
-- **One `t4g.micro`** (ARM64/Graviton — the app images are `linux/arm64`) running Amazon Linux 2023.
+- **One `t3.small`** (x86_64, 2 GB) running Amazon Linux 2023 + a 2 GB swapfile. x86_64 (not Graviton)
+  because the GHCR images CI publishes are `linux/amd64` only — the box must match. 2 GB because the
+  full stack (Postgres + JVM backend + nginx + Caddy) OOMs on `t3.micro`'s 1 GB; the backend JVM heap
+  is capped (`-Xmx768m`) so it fits. (Multi-arch images → a cheaper `t4g` box is a future optimization.)
 - The whole app runs as **Docker Compose** on the box (`docker-compose.yml` + `Caddyfile` here are the
   exact files copied to it). Images are pulled from **GHCR** (published by CI).
 - **Caddy** obtains + renews a free **Let's Encrypt** cert automatically once DNS points at the box.
@@ -43,9 +46,8 @@ internet ──▶ Caddy (:443, auto Let's Encrypt TLS)
 
 ## Cost
 
-- `t4g.micro` + a 20 GB gp3 volume + one **attached** Elastic IP: free-tier eligible; after any free
-  window ≈ **$6–10/mo**, covered by AWS credits. Cognito, SSM Parameter Store (standard), and the
-  Let's Encrypt cert are **$0**.
+- `t3.small` + a 20 GB gp3 volume + one **attached** Elastic IP ≈ **$15/mo**, covered by AWS credits.
+  Cognito, SSM Parameter Store (standard), and the Let's Encrypt cert are **$0**.
 - Everything is on ONE box (no ALB, no RDS, no CloudFront, no NAT) — that's the whole point vs the
   ~$70/mo ECS stack.
 - ⚠️ An Elastic IP is only free **while attached to a running instance**; a `destroy` releases it.

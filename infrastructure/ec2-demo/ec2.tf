@@ -1,15 +1,17 @@
 # ── The EC2 box that runs the always-on demo ─────────────────────────────────────────
-# One t4g.micro (ARM64/Graviton — the app images are arm64) running Amazon Linux 2023, bootstrapped by
-# user-data to install Docker + Compose and bring up the whole app (Postgres + backend + frontend +
-# Caddy). An Elastic IP gives it a stable address the custom domain's A record points at.
+# One t3.small (x86_64, 2 GB) running Amazon Linux 2023, bootstrapped by user-data to install Docker +
+# Compose and bring up the whole app (Postgres + backend + frontend + Caddy). x86_64 (NOT Graviton):
+# the GHCR images CI publishes are linux/amd64 only, so the box must be x86_64 to run them. 2 GB (not
+# t3.micro's 1 GB, which OOMs) + a 2 GB swapfile + a capped JVM heap. An Elastic IP gives it a stable
+# address the custom domain's A record points at.
 
-# Latest Amazon Linux 2023 arm64 AMI, resolved from the SSM public parameter (no hardcoded AMI id).
-data "aws_ssm_parameter" "al2023_arm64" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+# Latest Amazon Linux 2023 x86_64 AMI, resolved from the SSM public parameter (no hardcoded AMI id).
+data "aws_ssm_parameter" "al2023_x86_64" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
 }
 
 resource "aws_instance" "demo" {
-  ami                    = data.aws_ssm_parameter.al2023_arm64.value
+  ami                    = data.aws_ssm_parameter.al2023_x86_64.value
   instance_type          = var.instance_type
   subnet_id              = data.aws_subnets.default.ids[0]
   vpc_security_group_ids = [aws_security_group.web.id]

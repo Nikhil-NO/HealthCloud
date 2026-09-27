@@ -32,9 +32,9 @@ variable "acme_email" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type. t4g.micro is ARM64/Graviton (the app images are arm64) and free-tier eligible."
+  description = "EC2 instance type. t3.small (x86_64, 2 GB) — matches the linux/amd64 GHCR images and has enough RAM for Postgres + JVM + nginx + Caddy (t3.micro's 1 GB OOMs). Drawn from credits."
   type        = string
-  default     = "t4g.micro"
+  default     = "t3.small"
 }
 
 variable "root_volume_gb" {
