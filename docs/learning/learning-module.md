@@ -6227,3 +6227,122 @@ A: Single box, single AZ, no managed backups, DB in a container volume (re-seeds
 image updates (`docker compose pull` or a box replace). It's right for a synthetic-data portfolio demo, not
 a production posture — which is exactly why the production-shape design (managed RDS, multi-AZ, Secrets
 Manager injection, CloudFront, rolling ECS deploys) is preserved in the ECS stack and the evidence pack.
+
+---
+
+## Fixing an unbranded Cognito sign-in page — and codifying UI branding in Terraform — 2026-09-27
+
+### What we built
+The always-on demo's login page had reverted to Amazon Cognito's plain default hosted UI (grey banner,
+blue button, no HealthCloud logo/wordmark) instead of our dark-navy/teal branded page. We (1) restored the
+branding on the live pool, then (2) added it to Terraform so it can never silently disappear again.
+
+### How it works
+- **Cognito hosted-UI branding** is set with `aws cognito-idp set-ui-customization`, which takes a block of
+  CSS (using Cognito's fixed `*-customizable` class names, e.g. `.background-customizable`,
+  `.submitButton-customizable`, `.logo-customizable`) plus a logo image. It is stored **per app client**
+  (or pool-wide with `--client-id ALL`), **inside AWS** — it is NOT part of any pool/client resource.
+- **Diagnosis:** `aws cognito-idp get-ui-customization --user-pool-id <pool> --client-id <client>` returned
+  `CSS: null, ImageUrl: null` for the EC2-demo pool `us-east-1_nnLesE6Aq` — no branding at all. The old ECS
+  pool's client (`2apbhhj…`) still had both, so we copied from there.
+- **Restore:** pulled the old client's CSS + logo (the logo via its public CloudFront `ImageUrl`), then:
+  ```bash
+  aws cognito-idp set-ui-customization \
+    --user-pool-id us-east-1_nnLesE6Aq \
+    --client-id 5r1hru11kptsl1mlamii8v01o2 \
+    --css "$(cat hosted-ui.css)" \
+    --image-file fileb://logo.png
+  ```
+- **Codify:** added a Terraform resource so `apply`/rebuild reapplies it automatically:
+  ```hcl
+  resource "aws_cognito_user_pool_ui_customization" "app" {
+    user_pool_id = aws_cognito_user_pool.main.id
+    client_id    = aws_cognito_user_pool_client.app.id
+    css          = file("${path.module}/cognito-ui/hosted-ui.css")
+    image_file   = filebase64("${path.module}/cognito-ui/logo.png")
+    depends_on   = [aws_cognito_user_pool_domain.main]
+  }
+  ```
+  The CSS + logo are committed under `infrastructure/ec2-demo/cognito-ui/`.
+
+### Key points to remember
+- **Branding is per-client AWS state, not Terraform state by default** — this is the whole reason it drifted.
+  The EC2 demo has its **own** Cognito pool (independent of the ECS pool), and the fresh pool's client was
+  never branded, so it fell back to Cognito's default page. This is the same "AWS-only drift" already
+  documented for the ECS pool; we closed it for the EC2 demo by adding the `..._ui_customization` resource.
+- **Applying an already-hand-applied resource is a safe no-op.** Because we applied via the CLI first, the
+  Terraform plan showed `1 to add` (Terraform didn't know about it yet). The `set-ui-customization` API is
+  idempotent (create-or-update), so `terraform apply -target=...` re-wrote the identical branding — `1 add /
+  0 change / 0 destroy`, $0, no downtime — and its only real effect was to bring **state** in sync. A
+  follow-up full `terraform plan` then reported **No changes**, confirming config == reality.
+- **`-target` is for exactly this** — reconciling one resource without touching the running box/EIP/pool.
+  Terraform even prints a note that `-target` isn't for routine use; here it was the right call.
+- **`file()` vs `filebase64()`** — CSS is text (`file()`); the logo must be base64 for `image_file`
+  (`filebase64()`). Committing the assets makes the branding reviewable and versioned, not a hidden CLI step.
+- **`depends_on` the hosted-UI domain** — UI customization attaches to the pool's hosted UI, so the domain
+  resource must exist first.
+- **A logo served as `image.jpg` was actually a PNG.** `file` reported the downloaded asset as `PNG image
+  data, 513x156` despite the `.jpg` URL — Cognito accepts png/jpg/gif and reads bytes, so the extension is
+  cosmetic; we saved it as `logo.png` for honesty. Keep it under Cognito's ~100 KB image limit (ours: 16 KB).
+
+### Failures and how we fixed them
+- **Symptom:** the demo login page lost its HealthCloud logo + theme (user noticed the "different sign in
+  page"). **Root cause:** the EC2-demo Cognito client had no hosted-UI customization (verified `null` via
+  `get-ui-customization`) because branding lives in AWS per-client and was never copied to the new pool.
+  **Fix:** copied CSS+logo from the old branded client and `set-ui-customization` on the demo client;
+  verified in-browser the branded page rendered.
+- **"Why does the plan say 1 to add if it's already live?"** Not a failure — expected: we applied by hand,
+  so Terraform's state didn't include the resource. Reconciled by applying it (idempotent no-op vs AWS) so
+  state matches; confirmed with a clean follow-up plan.
+- Nothing else broke; no box restart or downtime was involved.
+
+### Interview Q&A
+
+#### 1. Beginner
+**Q: What is Cognito hosted-UI customization?**
+A: A way to style Amazon Cognito's built-in login page — a CSS block (using fixed `*-customizable` class
+names) plus a logo image — set via `aws cognito-idp set-ui-customization`. It changes only the look of the
+sign-in page, not the auth logic.
+
+**Q: Why did the branding disappear?**
+A: The always-on demo runs its own, separate Cognito user pool. Branding is stored per app client inside
+AWS, and this new pool's client had never been branded, so Cognito served its plain default page.
+
+**Q: How did you confirm the cause before changing anything?**
+A: Ran the read-only `get-ui-customization` on the demo client — it returned `CSS: null, ImageUrl: null` —
+and confirmed the old pool's client still had both, so we knew exactly what was missing and where to copy from.
+
+#### 2. Intermediate
+**Q: Why put the branding in Terraform instead of just re-running the CLI command?**
+A: A script is still a manual step you must remember after every rebuild — the same failure mode that caused
+the bug. Declaring `aws_cognito_user_pool_ui_customization` makes the branding part of the stack's desired
+state, so `terraform apply` restores it automatically and drift can't reintroduce the blank page. It also
+makes the CSS + logo reviewable, versioned files.
+
+**Q: The plan said "1 to add" even though the branding was already live. Is that dangerous to apply?**
+A: No. We'd applied it by hand first, so Terraform simply didn't track it yet. The underlying API is
+idempotent (create-or-update), so applying re-wrote the identical CSS + logo — $0, no visible change, no
+downtime — and only synced Terraform state. A follow-up plan then showed "No changes."
+
+**Q: Why `terraform apply -target` rather than a full apply?**
+A: To reconcile just this one new resource without refreshing/nudging the running instance, Elastic IP,
+Cognito pool, or SSM param. It scopes the apply to the customization resource; a full apply afterward
+confirmed the whole config was a no-op.
+
+#### 3. Advanced
+**Q: What are the failure modes of storing a logo as base64 in Terraform state?**
+A: `image_file` (base64) is stored in state, which is fine here (synthetic branding, private encrypted S3
+state). For large images you'd bump state size and diffs; keep the asset small (Cognito's limit is ~100 KB
+anyway). A cleaner pattern for big assets is hashing the file and storing only the reference, but for a tiny
+logo the inline base64 is simplest and fully declarative.
+
+**Q: How would you generalize this so the ECS pool's branding also stops drifting?**
+A: Add the same `aws_cognito_user_pool_ui_customization` resource to the ECS stack's `cognito.tf`, sharing
+the same committed CSS + logo. The ECS pool's branding is still documented as AWS-only drift; the EC2 demo
+now proves the fix, and applying the identical resource there would close it too (its callback URLs
+reference CloudFront, so mind the usual `-target`/recreate caveats when touching that client).
+
+**Q: Why does the resource need `depends_on` the hosted-UI domain, and what happens without it?**
+A: UI customization is attached to the pool's hosted UI, which only exists once the
+`aws_cognito_user_pool_domain` is created. Without an explicit (or implicit) dependency, Terraform could try
+to set customization before the hosted UI exists and fail; `depends_on` orders it correctly.
