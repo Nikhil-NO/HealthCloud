@@ -5,5 +5,5 @@
 # domain_name   = "healthcloud-demo.com"
 # acme_email    = "you@example.com"        # your address, for Let's Encrypt cert-expiry notices
 # instance_type = "t3.small"               # x86_64 (2 GB), matches the linux/amd64 GHCR images
-# github_owner  = "nikhil-oggu"            # GHCR owner the CI images are published under
+# github_owner  = "nikhil-no"            # GHCR owner the CI images are published under
 # image_tag     = "latest"                 # or a pinned sha-<short> tag

@@ -52,7 +52,7 @@ variable "root_volume_gb" {
 variable "github_owner" {
   description = "GHCR owner (lowercase) the app images are published under by CI. Images: ghcr.io/<owner>/healthcloud-backend|frontend."
   type        = string
-  default     = "nikhil-oggu"
+  default     = "nikhil-no"
 }
 
 variable "image_tag" {

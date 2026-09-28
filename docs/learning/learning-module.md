@@ -2661,7 +2661,7 @@ it's the artifacts and scaffolding that the later slices (6–15) actually deplo
   artifact ECS Fargate runs later.
 - **Slice 2 — publish the backend image in CI.** A `backend-image` job in `.github/workflows/ci.yml` (`needs: backend`,
   so only a tested image ships) builds the image via `docker/build-push-action` and **pushes it to GHCR**
-  (`ghcr.io/nikhil-oggu/healthcloud-backend`, tags `sha-<short>` immutable + `latest`) **only on push to `main`** — PRs
+  (`ghcr.io/nikhil-no/healthcloud-backend`, tags `sha-<short>` immutable + `latest`) **only on push to `main`** — PRs
   build but don't push. Auth is the automatic `GITHUB_TOKEN` (`packages: write`), so there are no secrets to manage.
 - **Slice 3 — containerize the frontend.** A multi-stage `frontend/Dockerfile`: build the SPA with Node, then serve it
   from a **non-root nginx** that also **reverse-proxies `/api` + `/actuator` to the backend same-origin** — the
@@ -6094,7 +6094,7 @@ down the expensive ECS stack never breaks the demo. The motivation: the ECS+ALB+
   backend + frontend nginx + **Caddy**. Only Caddy publishes ports; the rest are on the internal Docker
   network. Caddy auto-obtains + renews a **Let's Encrypt** cert and reverse-proxies to the frontend nginx,
   which in turn proxies `/api`+`/actuator`+`/oauth2` to the backend (same-origin, so cookies stay first-party).
-- **Images come from GHCR** — the ones CI already publishes (`ghcr.io/nikhil-oggu/healthcloud-backend|frontend`).
+- **Images come from GHCR** — the ones CI already publishes (`ghcr.io/nikhil-no/healthcloud-backend|frontend`).
 - **Its own Cognito pool** (`cognito.tf`) on the `demo,cognito` profile (no dev-login bypass), with **14
   synthetic users** (both orgs × 7 roles). Passwords are set **post-apply** by `set-demo-passwords.sh`
   (they can't live in Terraform state).

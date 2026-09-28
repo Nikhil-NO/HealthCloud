@@ -45,7 +45,7 @@ networking is a later slice); the app makes no broker connection at startup rega
 On every push to `main`, CI builds this image and publishes it to **GHCR** (after the backend tests
 pass), tagged with the short commit SHA and `latest`. Pull the published image with:
 ```bash
-docker pull ghcr.io/nikhil-oggu/healthcloud-backend:latest
+docker pull ghcr.io/nikhil-no/healthcloud-backend:latest
 ```
 (If the package is private, either make it public once in the repo's **Packages** settings, or
 `docker login ghcr.io` with a personal access token that has `read:packages`.)
