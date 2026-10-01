@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900" font-family="'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <radialGradient id="glow1" cx="12%" cy="10%" r="55%">
+      <stop offset="0%" stop-color="#0d9488" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#0d9488" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="92%" cy="92%" r="60%">
+      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="9" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+    <marker id="aw" markerWidth="12" markerHeight="12" refX="8" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 z" fill="#94a3b8"/></marker>
+    <marker id="ag" markerWidth="12" markerHeight="12" refX="8" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 z" fill="#16a34a"/></marker>
+    <marker id="ar" markerWidth="12" markerHeight="12" refX="8" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 z" fill="#e11d48"/></marker>
+    <marker id="at" markerWidth="12" markerHeight="12" refX="8" refY="5" orient="auto"><path d="M0,0 L9,5 L0,10 z" fill="#0d9488"/></marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="#f6f8fb"/>
+  <rect width="1600" height="900" fill="url(#glow1)"/>
+  <rect width="1600" height="900" fill="url(#glow2)"/>
+
+  <!-- title -->
+  <text x="60" y="72" font-size="44" font-weight="800" fill="#0f172a">Event-Driven Backbone</text>
+  <text x="62" y="114" font-size="21" font-weight="700" fill="#0d9488">Transactional outbox → Kafka → idempotent consumer → dead-letter + replay</text>
+
+  <!-- ===================== TOP HAPPY PATH ARROWS ===================== -->
+  <line x1="270" y1="315" x2="371" y2="315" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#aw)"/>
+
+  <line x1="587" y1="315" x2="688" y2="315" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#aw)"/>
+  <text x="640" y="340" font-size="14" fill="#64748b" text-anchor="middle">relay,</text>
+  <text x="640" y="357" font-size="14" fill="#64748b" text-anchor="middle">after commit</text>
+
+  <line x1="904" y1="315" x2="1005" y2="315" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#aw)"/>
+  <text x="957" y="344" font-size="14" fill="#64748b" text-anchor="middle">consume</text>
+
+  <line x1="1221" y1="315" x2="1322" y2="315" stroke="#16a34a" stroke-width="2.5" marker-end="url(#ag)"/>
+  <text x="1274" y="344" font-size="14" fill="#16a34a" font-weight="700" text-anchor="middle">success</text>
+
+  <!-- ===================== LOOP: down / left / up ===================== -->
+  <line x1="1116" y1="390" x2="1116" y2="594" stroke="#e11d48" stroke-width="2.5" marker-end="url(#ar)"/>
+  <text x="1136" y="474" font-size="14" fill="#e11d48">retry exhausted</text>
+  <text x="1136" y="492" font-size="14" fill="#e11d48">/ poison message</text>
+
+  <line x1="1011" y1="670" x2="908" y2="670" stroke="#94a3b8" stroke-width="2.5" marker-end="url(#aw)"/>
+  <text x="957" y="657" font-size="14" fill="#64748b" text-anchor="middle">drainer</text>
+
+  <line x1="799" y1="600" x2="799" y2="394" stroke="#0d9488" stroke-width="2.5" stroke-dasharray="7 6" marker-end="url(#at)"/>
+  <text x="783" y="480" font-size="14" fill="#0d9488" text-anchor="end">replay</text>
+  <text x="783" y="498" font-size="14" fill="#0d9488" text-anchor="end">(idempotent-safe)</text>
+
+  <!-- transaction boundary around the claim + outbox writes -->
+  <rect x="46" y="226" width="556" height="188" rx="18" fill="none" stroke="#0d9488" stroke-width="2" stroke-dasharray="6 6"/>
+  <text x="324" y="212" font-size="15" font-weight="700" fill="#0d9488" text-anchor="middle">Same PostgreSQL transaction — claim + outbox commit together</text>
+
+  <!-- ===================== TOP ROW BOXES ===================== -->
+  <!-- A -->
+  <rect x="60" y="240" width="210" height="150" rx="16" fill="#ffffff" stroke="#6366f1" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="82" cy="276" r="5" fill="#6366f1"/>
+  <text x="98" y="282" font-size="21" font-weight="700" fill="#0f172a">Domain service</text>
+  <text x="82" y="326" font-size="14.5" fill="#475569" font-family="'IBM Plex Mono','SF Mono',ui-monospace,Consolas,monospace">AdjudicationService</text>
+  <text x="82" y="352" font-size="15" fill="#64748b">writes claim + event</text>
+
+  <!-- B -->
+  <rect x="377" y="240" width="210" height="150" rx="16" fill="#ffffff" stroke="#0d9488" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="399" cy="276" r="5" fill="#0d9488"/>
+  <text x="415" y="282" font-size="21" font-weight="700" fill="#0f172a">Outbox table</text>
+  <text x="399" y="326" font-size="14.5" fill="#475569" font-family="'IBM Plex Mono','SF Mono',ui-monospace,Consolas,monospace">outbox_event</text>
+  <text x="399" y="352" font-size="15" fill="#64748b">(in PostgreSQL)</text>
+
+  <!-- C -->
+  <rect x="694" y="240" width="210" height="150" rx="16" fill="#ffffff" stroke="#f59e0b" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="716" cy="276" r="5" fill="#f59e0b"/>
+  <text x="732" y="282" font-size="21" font-weight="700" fill="#0f172a">Kafka topic</text>
+  <text x="716" y="326" font-size="14.5" fill="#475569" font-family="'IBM Plex Mono','SF Mono',ui-monospace,Consolas,monospace">claim.adjudicated</text>
+  <text x="716" y="352" font-size="15" fill="#64748b">at-least-once</text>
+
+  <!-- D -->
+  <rect x="1011" y="240" width="210" height="150" rx="16" fill="#ffffff" stroke="#6366f1" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="1033" cy="274" r="5" fill="#6366f1"/>
+  <text x="1049" y="280" font-size="21" font-weight="700" fill="#0f172a">Idempotent</text>
+  <text x="1033" y="306" font-size="21" font-weight="700" fill="#0f172a">consumer</text>
+  <text x="1033" y="348" font-size="14" fill="#64748b">unique <tspan font-family="'IBM Plex Mono','SF Mono',ui-monospace,Consolas,monospace" fill="#475569">event_id</tspan>, no dup rows</text>
+
+  <!-- E -->
+  <rect x="1328" y="240" width="210" height="150" rx="16" fill="#ffffff" stroke="#16a34a" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="1350" cy="274" r="5" fill="#16a34a"/>
+  <text x="1366" y="280" font-size="21" font-weight="700" fill="#0f172a">Notification</text>
+  <text x="1350" y="306" font-size="21" font-weight="700" fill="#0f172a">feed</text>
+  <text x="1350" y="348" font-size="15" fill="#64748b">PHI-free</text>
+
+  <!-- ===================== FAILURE ROW BOXES ===================== -->
+  <!-- G: Dead-letter store (under C) -->
+  <rect x="694" y="600" width="210" height="140" rx="16" fill="#ffffff" stroke="#64748b" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="716" cy="634" r="6" fill="#64748b"/>
+  <text x="734" y="640" font-size="21" font-weight="700" fill="#0f172a">Dead-letter</text>
+  <text x="716" y="666" font-size="21" font-weight="700" fill="#0f172a">store</text>
+  <text x="716" y="706" font-size="15" fill="#64748b">inspect + replay</text>
+
+  <!-- F: Dead-letter topic (under D) -->
+  <rect x="1011" y="600" width="210" height="140" rx="16" fill="#ffffff" stroke="#f43f5e" stroke-width="2" filter="url(#sh)"/>
+  <circle cx="1033" cy="634" r="6" fill="#f43f5e"/>
+  <text x="1049" y="640" font-size="21" font-weight="700" fill="#0f172a">Dead-letter</text>
+  <text x="1033" y="666" font-size="21" font-weight="700" fill="#0f172a">topic</text>
+  <text x="1033" y="706" font-size="14.5" fill="#475569" font-family="'IBM Plex Mono','SF Mono',ui-monospace,Consolas,monospace">…adjudicated.DLT</text>
+
+  <!-- tagline -->
+  <text x="800" y="812" font-size="22" font-weight="800" fill="#0f172a" text-anchor="middle">Atomic claim + event writes · Duplicate-notification protection · Failed-event replay</text>
+  <text x="800" y="846" font-size="15" fill="#64748b" text-anchor="middle">Kafka pipeline tested locally — publishing &amp; consumption are off in the hosted demo.</text>
+</svg>
