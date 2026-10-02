@@ -161,8 +161,9 @@ export function AuditEventsPage() {
                 Verify the audit chain
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                Each event is a link in a per-organization HMAC hash chain. Verify integrity asks the server
-                to recompute the chain and detect any modified, deleted, reordered, inserted or truncated row.
+                Each event is a link in a per-organization HMAC hash chain, with the signing key held outside
+                the database. Verify integrity recomputes the chain and flags any record that was modified,
+                inserted, or reordered — without that key, a database-only change can't produce a matching chain.
               </Typography>
             </Box>
             <Button
